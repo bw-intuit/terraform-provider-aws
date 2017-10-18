@@ -346,8 +346,18 @@ func disassociateEip(d *schema.ResourceData, meta interface{}) error {
 			// Hence this disassociation can be skipped.
 			return nil
 		}
-		_, err = ec2conn.DisassociateAddress(&ec2.DisassociateAddressInput{
-			AssociationId: aws.String(associationID),
+		err = resource.Retry(10*time.Second, func() *resource.RetryError {
+			_, err := ec2conn.DisassociateAddress(&ec2.DisassociateAddressInput{
+				AssociationId: aws.String(associationID),
+			})
+			if err != nil {
+				// This may occur when EIP was associated w/ NLB which we recently destroyed
+				if isAWSErr(err, "AuthFailure", "to access the specified resource") {
+					return resource.RetryableError(err)
+				}
+				return resource.NonRetryableError(err)
+			}
+			return nil
 		})
 	case "standard":
 		_, err = ec2conn.DisassociateAddress(&ec2.DisassociateAddressInput{
